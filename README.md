@@ -15,6 +15,7 @@ Live site: [Everyday Shop](https://everyday-shop-anirudh.cidirianirudh.chatgpt.s
 - Card, PayPal and pay-later demo payment options
 - Automatic `MM/YY` card-expiry formatting
 - Responsive desktop and mobile layouts
+- English and French storefront with a language choice on the first visit
 
 ## Tech stack
 
@@ -34,6 +35,13 @@ pnpm dev
 ```
 
 Then open the local URL printed in the terminal.
+
+On the first visit, choose English or French in the dialog. The choice is saved
+in the `everyday-language` cookie and can be changed with the language selector
+in the header. For browser automation, the dialog buttons have stable
+`data-testid` values `language-english` and `language-french`; the header
+selector uses `language-switcher`. Clear the cookie to test the first-visit
+dialog again.
 
 The application expects a Cloudflare D1 database bound as `DB`. Apply the
 included migration at `drizzle/0000_legal_the_twelve.sql` to the bound database

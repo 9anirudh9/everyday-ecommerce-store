@@ -1,7 +1,19 @@
 import type {Metadata} from 'next';
-import Link from 'next/link';
-import {ShoppingBag} from 'lucide-react';
+import {cookies} from 'next/headers';
+import {languageCookie,translate,type Language} from '@/lib/i18n';
+import LanguageProvider from './language-provider';
+import SiteFrame from './site-frame';
 import './globals.css';
-import SearchForm from './search-form';
-export const metadata:Metadata={title:'Everyday — Little things. Lovely spaces.',description:'Shop simple home accessories at Everyday. A demo ecommerce store.'};
-export default function Layout({children}:{children:React.ReactNode}){return <html lang="en"><body><div className="announcement">A little something for your everyday. <span>Free delivery on every order.</span></div><header><Link href="/" className="logo">everyday<span>®</span></Link><nav><Link href="/">Home</Link><Link href="/products">Shop</Link><Link href="/accessories">Accessories</Link></nav><SearchForm compact/><div className="header-right"><span className="guest-label">No sign-in needed</span><Link href="/cart" className="bag" aria-label="Shopping cart"><ShoppingBag size={20}/><span>Cart</span></Link></div></header>{children}<footer><Link href="/" className="logo">everyday<span>®</span></Link><p>Good things for your everyday.</p><div><a href="https://dummyjson.com" target="_blank" rel="noreferrer">Product images: DummyJSON</a><span>Demo store · No real transactions</span></div></footer></body></html>}
+export async function generateMetadata():Promise<Metadata>{
+  const saved=(await cookies()).get(languageCookie)?.value;
+  const language:Language=saved==='fr'?'fr':'en';
+  return {
+    title:translate(language,'Everyday — Little things. Lovely spaces.'),
+    description:translate(language,'Shop simple home accessories at Everyday. A demo ecommerce store.'),
+  };
+}
+export default async function Layout({children}:{children:React.ReactNode}){
+  const saved=(await cookies()).get(languageCookie)?.value;
+  const language:Language|null=saved==='en'||saved==='fr'?saved:null;
+  return <html lang={language??'en'}><body><LanguageProvider initialLanguage={language}><SiteFrame>{children}</SiteFrame></LanguageProvider></body></html>;
+}
