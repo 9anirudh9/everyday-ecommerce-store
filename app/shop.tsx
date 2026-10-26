@@ -1,29 +1,28 @@
 'use client';
 /* eslint-disable @next/next/no-html-link-for-pages -- This demo intentionally uses document navigation for shop routes. */
-import {FormEvent,useCallback,useEffect,useRef,useState} from 'react';
+import {FormEvent,useEffect,useState} from 'react';
 import {products,money,Product} from '@/lib/products';
 import {searchProducts} from '@/lib/search';
 import {formatCardExpiry} from '@/lib/payment';
-import {localizeCategory,localizeProduct,translate} from '@/lib/i18n';
+import {localizeCategory,localizeProduct} from '@/lib/i18n';
 import SearchForm from './search-form';
 import {useLanguage} from './language-provider';
+import {useCart} from './cart-provider';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Toaster} from '@/components/ui/sonner';
 import {toast} from 'sonner';
 import {ArrowRight,Check,CircleCheck,Clock3,CreditCard,Minus,Plus,ShoppingBag,Tag,Wallet,X} from 'lucide-react';
 
-type Item={product:number,qty:number};
-type ApiResponse={error?:string;items?:Item[];id?:string;total?:number};
+type ApiResponse={error?:string;id?:string;total?:number};
 type Address={name:string;email:string;street:string;city:string;pin:string};
 type PaymentMethod='card'|'paypal'|'pay-later';
 
 export default function Shop({view,id,query=''}:{view:string,id?:number,query?:string}){
   const {language,t}=useLanguage();
-  const [items,setItems]=useState<Item[]>([]);
-  const [loading,setLoading]=useState(true);
+  const {items,setReadyItems,status,hasLoaded,error,refresh}=useCart();
+  const loading=status==='loading'&&!hasLoaded;
   const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
   const [order,setOrder]=useState('');
   const [couponInput,setCouponInput]=useState('');
   const [coupon,setCoupon]=useState('');
@@ -32,7 +31,6 @@ export default function Shop({view,id,query=''}:{view:string,id?:number,query?:s
   const [paymentMethod,setPaymentMethod]=useState<PaymentMethod>('card');
   const [paymentSummary,setPaymentSummary]=useState('');
   const [cardExpiry,setCardExpiry]=useState('');
-  const initiallyLoaded=useRef(false);
 
   useEffect(()=>{
     const timer=window.setTimeout(()=>{
@@ -41,32 +39,13 @@ export default function Shop({view,id,query=''}:{view:string,id?:number,query?:s
     },0);
     return ()=>window.clearTimeout(timer);
   },[]);
-  const load=useCallback(async()=>{
-    setLoading(true);
-    try{
-      const response=await fetch('/api/shop');
-      const data=await response.json() as ApiResponse;
-      if(!response.ok)throw Error(translate(language,data.error||'Unable to load your cart.'));
-      setItems(data.items||[]);setError('');
-    }catch(cause){setError((cause as Error).message)}finally{setLoading(false)}
-  },[language]);
-  useEffect(()=>{
-    if(initiallyLoaded.current)return;
-    const timer=window.setTimeout(()=>{
-      if(initiallyLoaded.current)return;
-      initiallyLoaded.current=true;
-      void load();
-    },0);
-    return ()=>window.clearTimeout(timer);
-  },[load]);
-
   async function update(product:number,qty:number){
     setBusy(true);
     try{
       const response=await fetch('/api/shop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product,qty})});
       const data=await response.json() as ApiResponse;
       if(!response.ok)throw Error(t(data.error||'Could not update the cart.'));
-      setItems(current=>[...current.filter(item=>item.product!==product),...(qty?[{product,qty}]:[])]);
+      setReadyItems([...items.filter(item=>item.product!==product),...(qty?[{product,qty}]:[])]);
       toast.success(t(qty?'Cart updated':'Item removed'));
     }catch(cause){toast.error((cause as Error).message)}finally{setBusy(false)}
   }
@@ -110,7 +89,7 @@ export default function Shop({view,id,query=''}:{view:string,id?:number,query?:s
       const response=await fetch('/api/shop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'checkout',address,coupon,paymentMethod})});
       const data=await response.json() as ApiResponse;
       if(!response.ok)throw Error(t(data.error||'Could not place the order.'));
-      setOrder(data.id||'');setItems([]);setCoupon('');localStorage.removeItem('everyday-coupon');
+      setOrder(data.id||'');setReadyItems([]);setCoupon('');localStorage.removeItem('everyday-coupon');
     }catch(cause){toast.error((cause as Error).message)}finally{setBusy(false)}
   }
 
@@ -123,7 +102,7 @@ export default function Shop({view,id,query=''}:{view:string,id?:number,query?:s
 
   const cards=(list:Product[])=><div className="grid">{list.map(item=>{const product=localizeProduct(item,language);return <article className="product-card" key={product.id}>
     <a href={`/products/${product.id}`} className="photo"><img src={product.image} alt={product.name}/><span>{localizeCategory(product.category,language).toLocaleUpperCase(language)}</span></a>
-    <div className="card-bottom"><div><a href={`/products/${product.id}`}><h3>{product.name}</h3></a><p>{money(product.price)}</p></div><Button aria-label={t('Add {product} to cart',{product:product.name})} disabled={busy||loading} variant="outline" size="icon" onClick={()=>add(product.id)}><Plus/></Button></div>
+    <div className="card-bottom"><div><a href={`/products/${product.id}`}><h3>{product.name}</h3></a><p>{money(product.price)}</p></div><Button aria-label={t('Add {product} to cart',{product:product.name})} disabled={busy||status!=='ready'} variant="outline" size="icon" onClick={()=>add(product.id)}><Plus/></Button></div>
   </article>})}</div>;
 
   const summary=<aside className="summary"><h2>{t('Order summary')}</h2>
@@ -165,7 +144,7 @@ export default function Shop({view,id,query=''}:{view:string,id?:number,query?:s
       <div className="review-card"><div><h3>{t('Payment')}</h3><button onClick={()=>setCheckoutStep(2)}>{t('Edit')}</button></div><p><b>{t(paymentMethod==='card'?'Card':paymentMethod==='paypal'?'PayPal':'Pay later')}</b><br/>{paymentMethod==='card'?t('Card ending {digits}',{digits:paymentSummary}):paymentMethod==='paypal'?`PayPal · ${paymentSummary}`:t('Pay later · due in 30 days')}</p></div>
       <div className="review-card items-review"><div><h3>{t('Items')}</h3><span>{t('{count} total',{count:items.reduce((sum,item)=>sum+item.qty,0)})}</span></div>{items.map(item=>{const product=products.find(candidate=>candidate.id===item.product);return product?<p key={item.product}><span>{item.qty} × {localizeProduct(product,language).name}</span><b>{money(product.price*item.qty)}</b></p>:null})}</div>
       <div className="demo-note"><b>{t('Ready to confirm?')}</b><p>{t('Your cart is only cleared after you press the button below.')}</p></div>
-      <div className="stage-actions"><Button type="button" variant="outline" onClick={()=>setCheckoutStep(2)}>{t('Back')}</Button><Button className="primary confirm-order" type="button" disabled={busy} onClick={placeOrder}>{t(busy?'Placing order…':'Confirm and place order')} <CircleCheck size={18}/></Button></div>
+      <div className="stage-actions"><Button type="button" variant="outline" onClick={()=>setCheckoutStep(2)}>{t('Back')}</Button><Button className="primary confirm-order" type="button" disabled={busy||status!=='ready'} onClick={placeOrder}>{t(busy?'Placing order…':'Confirm and place order')} <CircleCheck size={18}/></Button></div>
     </div>}
   </div>;
 
@@ -174,12 +153,13 @@ export default function Shop({view,id,query=''}:{view:string,id?:number,query?:s
     :view==='search'?<section className="search-landing"><div className="page-head"><span className="eyebrow">{t('FIND YOUR EVERYDAY FAVOURITE')}</span><h1>{query?t('Results for “{query}”',{query}):t('Search the whole collection.')}</h1><p>{query?t(results.length===1?'{count} product found':'{count} products found',{count:results.length}):t('Start typing to see product suggestions instantly.')}</p><SearchForm key={query} query={query}/><div className="search-suggestions"><span>{t('Try:')}</span><a href={`/search?q=${language==='fr'?'plante':'plant'}`}>{t('Plants')}</a><a href={`/search?q=${language==='fr'?'montre':'watch'}`}>{t('Watches')}</a><a href={`/search?q=${language==='fr'?'sac':'bag'}`}>{t('Bags')}</a><a href={`/search?q=${language==='fr'?'lunettes':'sunglasses'}`}>{t('Sunglasses')}</a>{query&&<a href="/search">{t('Clear search')}</a>}</div></div>{query?(results.length?cards(results):<div className="empty" role="status"><h2>{t('No matching products.')}</h2><p>{t('Try a shorter search, such as “plant”, “watch” or “bag”.')}</p><a className="primary" href="/products">{t('Browse all products')}</a></div>):<><div className="section-head"><h2>{t('Popular searches')}</h2><a href="/products">{t('View all products ↗')}</a></div>{cards([...searchProducts('plant'),...accessoryProducts.slice(0,2)])}</>}</section>
     :view==='accessories'?<section><div className="page-head collection-head"><span className="eyebrow">{t('Accessories').toLocaleUpperCase(language)}</span><h1>{t('Finishing touches for every day.')}</h1><p>{t('{count} watches, sunglasses and bags selected for the collection.',{count:accessoryProducts.length})}</p></div>{cards(accessoryProducts)}</section>
     :view==='products'?<section><div className="page-head"><span className="eyebrow">{t('THE FULL COLLECTION')}</span><h1>{t('Small touches. Big difference.')}</h1><p>{t('{count} simple finds for your space and style.',{count:products.length})}</p></div>{cards(products)}</section>
-    :view==='product'?(()=>{const found=products.find(candidate=>candidate.id===id);const product=found&&localizeProduct(found,language);return product?<><div className="breadcrumb"><a href="/products">{t('All products')}</a> / {product.name}</div><section className="detail"><div className="detail-photo"><img src={product.image} alt={product.name}/></div><div className="detail-copy"><span className="eyebrow">{localizeCategory(product.category,language).toLocaleUpperCase(language)}</span><h1>{product.name}</h1><p className="price">{money(product.price)}</p><p>{product.description}</p><Button disabled={busy||loading} onClick={()=>add(product.id)} className="primary">{t('Add to cart')} <ShoppingBag size={18}/></Button><a className="text-link" href="/cart">{t('View your cart →')}</a><div className="details-note">{t('Free delivery · Prices include taxes')}<br/>{t('Sample product for demo shopping.')}</div></div></section></>:<section><h1>{t('Product not found')}</h1><a href="/products">{t('Back to products')}</a></section>})()
+    :view==='product'?(()=>{const found=products.find(candidate=>candidate.id===id);const product=found&&localizeProduct(found,language);return product?<><div className="breadcrumb"><a href="/products">{t('All products')}</a> / {product.name}</div><section className="detail"><div className="detail-photo"><img src={product.image} alt={product.name}/></div><div className="detail-copy"><span className="eyebrow">{localizeCategory(product.category,language).toLocaleUpperCase(language)}</span><h1>{product.name}</h1><p className="price">{money(product.price)}</p><p>{product.description}</p><Button disabled={busy||status!=='ready'} onClick={()=>add(product.id)} className="primary">{t('Add to cart')} <ShoppingBag size={18}/></Button><a className="text-link" href="/cart">{t('View your cart →')}</a><div className="details-note">{t('Free delivery · Prices include taxes')}<br/>{t('Sample product for demo shopping.')}</div></div></section></>:<section><h1>{t('Product not found')}</h1><a href="/products">{t('Back to products')}</a></section>})()
     :order?<section className="auth"><div className="success-icon"><Check/></div><h1>{t('Thanks for shopping.')}</h1><p>{t('Your demo order has been saved.')}</p><p>{t('Order #{id}',{id:order.slice(0,8).toUpperCase()})}</p><p>{t('No payment was collected and no items will be shipped.')}</p><a href="/products" className="primary">{t('Continue shopping')}</a></section>
     :<section>
       <div className="page-head"><span className="eyebrow">{t('YOUR EVERYDAY FINDS')}</span><h1>{t(view==='cart'?'Your shopping cart':'Checkout')}</h1>{view==='cart'&&<p>{t('Use EVERYDAY at checkout for 50% off.')}</p>}</div>
-      {loading?<p role="status">{t('Loading your cart…')}</p>:error?<div role="alert"><p>{error}</p><Button onClick={load}>{t('Try again')}</Button></div>:!items.length?<div className="empty"><ShoppingBag size={42}/><h2>{t('Your cart is waiting.')}</h2><p>{t('Find a little something for your home or wardrobe.')}</p><a href="/products" className="primary">{t('Explore products')}</a></div>:<div className="checkout-grid">
-        {view==='cart'?<div>{items.map(item=>{const product=localizeProduct(products.find(candidate=>candidate.id===item.product)!,language);return <div className="cart-row" key={item.product}><a href={`/products/${product.id}`}><img src={product.image} alt={product.name}/></a><div><a href={`/products/${product.id}`}><h3>{product.name}</h3></a><p>{money(product.price)}</p><button className="remove" disabled={busy} onClick={()=>update(product.id,0)}>{t('Remove')}</button></div><div className="quantity"><Button size="icon" variant="ghost" aria-label={t('Decrease {product}',{product:product.name})} disabled={busy||item.qty<=1} onClick={()=>update(product.id,item.qty-1)}><Minus/></Button><span>{item.qty}</span><Button size="icon" variant="ghost" aria-label={t('Increase {product}',{product:product.name})} disabled={busy||item.qty>=10} onClick={()=>update(product.id,item.qty+1)}><Plus/></Button></div><b>{money(product.price*item.qty)}</b></div>})}<a className="text-link" href="/products">{t('← Continue shopping')}</a></div>:checkoutPanel}
+      {hasLoaded&&status==='error'&&<div role="alert"><p>{t('Cart refresh failed. Your displayed items may be outdated.')}</p><p>{error}</p><Button onClick={()=>void refresh()}>{t('Try again')}</Button></div>}
+      {loading?<p role="status">{t('Loading your cart…')}</p>:status==='error'&&!hasLoaded?<div role="alert"><p>{error}</p><Button onClick={()=>void refresh()}>{t('Try again')}</Button></div>:!items.length?<div className="empty"><ShoppingBag size={42}/><h2>{t('Your cart is waiting.')}</h2><p>{t('Find a little something for your home or wardrobe.')}</p><a href="/products" className="primary">{t('Explore products')}</a></div>:<div className="checkout-grid">
+        {view==='cart'?<div>{items.map(item=>{const product=localizeProduct(products.find(candidate=>candidate.id===item.product)!,language);return <div className="cart-row" key={item.product}><a href={`/products/${product.id}`}><img src={product.image} alt={product.name}/></a><div><a href={`/products/${product.id}`}><h3>{product.name}</h3></a><p>{money(product.price)}</p><button className="remove" disabled={busy||status!=='ready'} onClick={()=>update(product.id,0)}>{t('Remove')}</button></div><div className="quantity"><Button size="icon" variant="ghost" aria-label={t('Decrease {product}',{product:product.name})} disabled={busy||status!=='ready'||item.qty<=1} onClick={()=>update(product.id,item.qty-1)}><Minus/></Button><span>{item.qty}</span><Button size="icon" variant="ghost" aria-label={t('Increase {product}',{product:product.name})} disabled={busy||status!=='ready'||item.qty>=10} onClick={()=>update(product.id,item.qty+1)}><Plus/></Button></div><b>{money(product.price*item.qty)}</b></div>})}<a className="text-link" href="/products">{t('← Continue shopping')}</a></div>:checkoutPanel}
         {summary}
       </div>}
     </section>

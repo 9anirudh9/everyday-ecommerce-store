@@ -1,0 +1,127 @@
+{
+  "version": "1.0",
+  "status": "local-definitions-not-executed",
+  "policy": "no push without approval",
+  "agents": [
+    {
+      "call_name": "@CONDUCTOR",
+      "file": "agents/conductor.md",
+      "role": "Orchestrator & Cost Governor",
+      "required_sections": [
+        "Mission",
+        "Inputs",
+        "Outputs",
+        "Procedure",
+        "Role-specific constraints",
+        "Mandatory safety & change-control rules",
+        "Escalation and monitor handoff",
+        "Dry-run contract"
+      ]
+    },
+    {
+      "call_name": "@ATLAS",
+      "file": "agents/atlas.md",
+      "role": "Business Architect",
+      "required_sections": [
+        "Mission",
+        "Inputs",
+        "Outputs",
+        "Procedure",
+        "Role-specific constraints",
+        "Mandatory safety & change-control rules",
+        "Escalation and monitor handoff",
+        "Dry-run contract"
+      ]
+    },
+    {
+      "call_name": "@FORGE",
+      "file": "agents/forge.md",
+      "role": "Lead Developer",
+      "required_sections": [
+        "Mission",
+        "Inputs",
+        "Outputs",
+        "Procedure",
+        "Role-specific constraints",
+        "Mandatory safety & change-control rules",
+        "Escalation and monitor handoff",
+        "Dry-run contract"
+      ]
+    },
+    {
+      "call_name": "@PROBE",
+      "file": "agents/probe.md",
+      "role": "Baseline & A/B Comparison Analyst",
+      "required_sections": [
+        "Mission",
+        "Inputs",
+        "Outputs",
+        "Procedure",
+        "Role-specific constraints",
+        "Mandatory safety & change-control rules",
+        "Escalation and monitor handoff",
+        "Dry-run contract"
+      ]
+    },
+    {
+      "call_name": "@SPEC",
+      "file": "agents/spec.md",
+      "role": "Python Playwright QA Lead",
+      "required_sections": [
+        "Mission",
+        "Inputs",
+        "Outputs",
+        "Procedure",
+        "Role-specific constraints",
+        "Mandatory safety & change-control rules",
+        "Escalation and monitor handoff",
+        "Dry-run contract"
+      ]
+    },
+    {
+      "call_name": "@SMOKE",
+      "file": "agents/smoke.md",
+      "role": "Deployment Smoke Guardian",
+      "required_sections": [
+        "Mission",
+        "Inputs",
+        "Outputs",
+        "Procedure",
+        "Role-specific constraints",
+        "Mandatory safety & change-control rules",
+        "Escalation and monitor handoff",
+        "Dry-run contract"
+      ]
+    },
+    {
+      "call_name": "@WATCHTOWER",
+      "file": "agents/watchtower.md",
+      "role": "Independent Step Monitor",
+      "required_sections": [
+        "Mission",
+        "Inputs",
+        "Outputs",
+        "Procedure",
+        "Role-specific constraints",
+        "Mandatory safety & change-control rules",
+        "Escalation and monitor handoff",
+        "Dry-run contract"
+      ]
+    },
+    {
+      "call_name": "@PERMIT",
+      "file": "agents/permit.md",
+      "role": "Approval & Third-Party Steward",
+      "required_sections": [
+        "Mission",
+        "Inputs",
+        "Outputs",
+        "Procedure",
+        "Role-specific constraints",
+        "Mandatory safety & change-control rules",
+        "Escalation and monitor handoff",
+        "Dry-run contract"
+      ]
+    }
+  ]
+}

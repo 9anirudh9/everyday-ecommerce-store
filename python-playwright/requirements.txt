@@ -1,0 +1,4 @@
+# Pin exact tested versions in implementation stage, after dependency audit.
+pytest
+pytest-playwright
+playwright

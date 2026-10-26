@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+__pycache__/
+*.pyc
 
 # next.js
 /.next/
@@ -42,6 +44,10 @@ next-env.d.ts
 # Checkout-local execution profile and tool state; never publish them.
 /.sites-runtime/
 /.agents/
-/.codex/
+/.codex/*
+!/.codex/config.toml
+!/.codex/agents/
+/.codex/agents/*
+!/.codex/agents/*.toml
 /outputs/
 /work/
