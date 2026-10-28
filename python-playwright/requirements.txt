@@ -1,4 +1,5 @@
-# Pin exact tested versions in implementation stage, after dependency audit.
-pytest
-pytest-playwright
-playwright
+pytest==8.4.2
+pytest-playwright==0.7.1
+pytest-xdist==3.8.0
+pytest-html==4.1.1
+playwright==1.64.0

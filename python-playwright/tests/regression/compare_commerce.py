@@ -48,6 +48,7 @@ class Capture:
     def __init__(self,browser,origin,side,folder,language='en',viewport='desktop'):
         self.browser,self.origin,self.side,self.folder=browser,origin,side,folder
         self.language,self.viewport=language,viewport
+        self.modern=side=='B'
         self.context=self.page=None
         self.result={'side':side,'url':origin,'language':language,'viewport':VIEWPORTS[viewport],
                      'requests':[],'errors':[],'checks':[],'captures':[]}
@@ -152,7 +153,7 @@ async def ui_journey(capture):
             ('Street address','Adresse','street'),('City','Ville','city'),('PIN code','Code postal','pin')]
     for english,french,key in labels:
         await page.get_by_label(capture.text(english,french),exact=True).fill(ADDRESS[key])
-    if capture.side=='B':
+    if capture.modern:
         await page.get_by_label(capture.text('Phone number','Numéro de téléphone'),exact=True).fill('9876543210')
         await page.get_by_label(capture.text('State','État'),exact=True).fill('Karnataka')
     await page.get_by_role('button',name=capture.text('Continue to payment','Continuer vers le paiement'),exact=True).click()
@@ -160,7 +161,7 @@ async def ui_journey(capture):
             ('Card number','Numéro de carte','4242 4242 4242 4242'),('Expiry','Date d’expiration','0133'),('CVV','CVV','123')]:
         await page.get_by_label(capture.text(english,french),exact=True).fill(value)
     await expect(page.locator('#expiry')).to_have_value('01/33')
-    if capture.side=='B':
+    if capture.modern:
         await page.get_by_label(capture.text('Payment outcome','Résultat du paiement'),exact=True).select_option('success')
     await page.get_by_role('button',name=capture.text('Review order','Vérifier la commande'),exact=True).click()
     await expect(page.locator('.summary .total')).to_contain_text('₹749')
@@ -174,7 +175,7 @@ async def ui_journey(capture):
     response=await pending.value;assert response.status==200
     request_body=response.request.post_data_json
     assert not (SENSITIVE & set(request_body))
-    if capture.side=='B':
+    if capture.modern:
         assert request_body['contractVersion']==2 and isinstance(request_body['expectedVersion'],int)
         assert isinstance(request_body['idempotencyKey'],str)
     order=await response.json()
@@ -204,13 +205,20 @@ def compare(a,b):
 
 
 async def run(args):
-    assert hashlib.sha256(BASELINE_ARCHIVE.read_bytes()).hexdigest()==BASELINE_SHA256,'Baseline archive identity mismatch'
+    if args.baseline_root:
+        actual = subprocess.check_output(['git','rev-parse','HEAD'],cwd=args.baseline_root,text=True).strip()
+        assert actual == args.baseline_ref, 'Baseline commit identity mismatch'
+        assert not subprocess.check_output(['git','status','--porcelain'],cwd=args.baseline_root,text=True).strip(), 'Baseline source is dirty'
+        baseline_identity = {'source_commit':actual,'source_tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=args.baseline_root,text=True).strip(),
+                             'build':build_fingerprint(args.baseline_root/'dist')}
+    else:
+        assert hashlib.sha256(BASELINE_ARCHIVE.read_bytes()).hexdigest()==BASELINE_SHA256,'Baseline archive identity mismatch'
+        baseline_identity = {'source_archive_sha256':BASELINE_SHA256,'build':build_fingerprint(ROOT/'.sites-runtime/p0-04-06-baseline/dist')}
     args.report_dir.mkdir(parents=True,exist_ok=True)
     before=source_fingerprint();test_hash=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     report={'scope':'Controlled local A/B compatibility, with independent disposable D1 databases; not production or randomized traffic',
             'started_utc':datetime.now(timezone.utc).isoformat(),
-            'baseline':{'url':args.baseline_url,'source_archive_sha256':BASELINE_SHA256,
-                        'build':build_fingerprint(ROOT/'.sites-runtime/p0-04-06-baseline/dist')},
+            'baseline':{'url':args.baseline_url,**baseline_identity},
             'candidate':{'url':args.candidate_url,'head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
                          'source_fingerprint':before,'build':build_fingerprint(ROOT/'dist')},'cases':[]}
     cases=[('api',f'api_{product}_{method}',product,method,'en','desktop') for product in (43,46) for method in ('card','paypal','pay-later')]
@@ -222,6 +230,7 @@ async def run(args):
             sides=[]
             for side,origin in [('A',args.baseline_url),('B',args.candidate_url)]:
                 capture=await Capture(browser,origin,side,args.report_dir/name/side,language,viewport).start()
+                capture.modern=side=='B' or args.baseline_modern
                 try:
                     if kind=='api':await api_journey(capture,product,method)
                     else:await ui_journey(capture)
@@ -229,6 +238,8 @@ async def run(args):
                 except Exception as error:capture.result.update(status='FAIL',error=redact_text(repr(error)))
                 finally:sides.append(await capture.finish())
             result=compare(*sides)
+            if args.baseline_modern:
+                result['intentional_changes']=['B adds versioned REST adapters and consistent error/request-ID headers','Product priceMinor/currency are additive; legacy shopping behavior is preserved']
             report['cases'].append({'name':name,'comparison':result,'a':str(args.report_dir/name/'A/result.json'),'b':str(args.report_dir/name/'B/result.json')})
             print(name,result['status'],flush=True)
         await browser.close()
@@ -251,11 +262,16 @@ if __name__=='__main__':
     parser.add_argument('--baseline-url',default='http://127.0.0.1:8788')
     parser.add_argument('--candidate-url',default='http://127.0.0.1:8787')
     parser.add_argument('--report-dir',type=Path,required=True)
+    parser.add_argument('--baseline-root',type=Path,help='Immutable source checkout serving A')
+    parser.add_argument('--baseline-ref',help='Required exact commit when baseline-root is supplied')
+    parser.add_argument('--baseline-modern',action='store_true',help='Baseline uses strict phone/state checkout v2')
     parser.add_argument('--case',action='append',help='Run one exact case; repeat to select focused cases')
     args=parser.parse_args()
     if not all(loopback(url) for url in (args.baseline_url,args.candidate_url)):
         parser.error('Both comparison targets must be disposable loopback servers')
     args.baseline_url=args.baseline_url.rstrip('/');args.candidate_url=args.candidate_url.rstrip('/')
     if args.baseline_url==args.candidate_url:parser.error('Independent A and B URLs are required')
+    if args.baseline_root and not args.baseline_ref:parser.error('--baseline-root requires --baseline-ref')
+    if args.baseline_root:args.baseline_root=args.baseline_root.resolve()
     args.report_dir=args.report_dir.resolve()
     raise SystemExit(asyncio.run(run(args)))

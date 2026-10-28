@@ -1,14 +1,17 @@
 import {shopSession} from '@/lib/shop-session';
-import {CommerceError,errorResponse,validateAndApplyCoupon,type CommerceBody} from '@/lib/commerce';
+import {validateAndApplyCoupon} from '@/lib/commerce';
+import {apiBody,apiError,apiJson,methodNotAllowed,requireSameOrigin} from '@/lib/api-contract';
 
 export const dynamic='force-dynamic';
 export async function POST(request:Request){
   try{
-    if(request.headers.get('origin')!==new URL(request.url).origin)throw new CommerceError(403,'INVALID_ORIGIN','Invalid request');
-    let input:unknown;
-    try{input=await request.json()}catch{throw new CommerceError(400,'INVALID_BODY','Enter a valid request body.')}
-    if(!input||typeof input!=='object'||Array.isArray(input))throw new CommerceError(400,'INVALID_BODY','Enter a valid request body.');
+    requireSameOrigin(request);
+    // Existing coupon clients may omit revision/key and send ignored fields.
+    // The service remains authoritative and applies its atomic legacy defaults.
+    const body=await apiBody(request,null);
     const user=await shopSession();
-    return Response.json(await validateAndApplyCoupon(user.userId,input as CommerceBody),{headers:{'Cache-Control':'private, no-store'}});
-  }catch(error){return errorResponse(error)}
+    return apiJson(request,await validateAndApplyCoupon(user.userId,body));
+  }catch(error){return apiError(request,error)}
 }
+const deny=(request:Request)=>methodNotAllowed(request,'POST');
+export {deny as GET,deny as PUT,deny as PATCH,deny as DELETE,deny as OPTIONS};
