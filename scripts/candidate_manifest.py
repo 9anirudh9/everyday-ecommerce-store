@@ -1,12 +1,17 @@
 """Create a deterministic local source archive without committing or pushing."""
 import hashlib
+import argparse
 import json
 from pathlib import Path
 import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "outputs/p0-01-release"
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--output-dir',type=Path,default=ROOT/'outputs/p0-01-release')
+parser.add_argument('--name',default='p0-01-candidate-source.zip')
+args=parser.parse_args()
+OUT = args.output_dir.resolve()
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -19,7 +24,7 @@ paths = sorted(git_paths("ls-files", "--cached", "--others", "--exclude-standard
 changed = sorted(git_paths("diff", "--name-only", "HEAD"))
 untracked = sorted(git_paths("ls-files", "--others", "--exclude-standard"))
 entries = []
-archive_path = OUT / "p0-01-candidate-source.zip"
+archive_path = OUT / args.name
 with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
     for path in paths:
         data = (ROOT / path).read_bytes()

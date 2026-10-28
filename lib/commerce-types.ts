@@ -1,0 +1,9 @@
+export type PaymentMethod='card'|'paypal'|'pay-later';
+export type Simulation='success'|'decline'|'cancel'|'timeout';
+export type Address={name:string;email:string;phone:string;street:string;city:string;state:string;pin:string};
+export type CartItem={product:number;qty:number};
+export type CouponError={code:string;message:string};
+export type CartIssue={code:string;message:string;product?:number;currentPrice?:number;availableStock?:number;maxQuantity?:number};
+export type Quote={subtotal:number;discount:number;total:number;delivery:0;coupon:string|null;couponError?:CouponError;subtotalPaise:number;discountPaise:number;totalPaise:number;currency:'INR';valid:boolean};
+export type CartSnapshot={items:CartItem[];version:number;quote:Quote;issues:CartIssue[];sessionStatus?:'active'|'new';checkedAt:string};
+export type CheckoutResult={id:string;subtotal:number;discount:number;total:number;coupon:string|null;paymentMethod:PaymentMethod;status:'demo-confirmed';replayed:boolean;cart:CartSnapshot};

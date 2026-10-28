@@ -1,6 +1,7 @@
 """Stateful local-only cart/checkout smoke against disposable Wrangler D1."""
 import argparse
 import asyncio
+import hashlib
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -12,13 +13,21 @@ from playwright.async_api import async_playwright, expect
 
 ROOT=Path(__file__).resolve().parents[3]
 
+def source_fingerprint():
+    files={}
+    for folder in ('app','lib','components','scripts','public/products'):
+        for path in (ROOT/folder).rglob('*'):
+            if path.is_file() and path.suffix in ('.ts','.tsx','.mjs','.css','.svg'):
+                files[path.relative_to(ROOT).as_posix()]=hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(json.dumps(files,sort_keys=True).encode()).hexdigest()
+
 
 async def run(args):
     args.report_dir.mkdir(parents=True,exist_ok=True)
     started=datetime.now(timezone.utc).isoformat()
     evidence={"scope":"local disposable D1 E2E, never production post-deployment smoke",
               "url":args.base_url,"started_utc":started,"head":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
-              "source_fingerprint":json.loads((ROOT/"outputs/p0-01-browser/candidate-2/results.json").read_text(encoding="utf-8"))["source_fingerprint"]["sha256"],
+              "source_fingerprint":source_fingerprint(),
               "checks":[],"api_responses":[],"errors":[]}
     def check(label,detail=None):
         evidence["checks"].append({"name":label,"status":"PASS","detail":detail})
@@ -43,7 +52,7 @@ async def run(args):
             assert response.status==200
             await expect(page_a.locator("header .cart-count")).to_have_text("0")
             await expect(page_a.get_by_role("heading",name="Plant Pot",exact=True)).to_be_visible()
-            await expect(page_a.get_by_text("₹1,499",exact=True)).to_be_visible()
+            await expect(page_a.locator(".detail-copy .price")).to_have_text("₹1,499")
             check("empty guest A and product 46/price")
             await page_a.get_by_role("button",name="Add to cart",exact=True).click()
             await expect(page_a.locator("header .cart-count")).to_have_text("1")

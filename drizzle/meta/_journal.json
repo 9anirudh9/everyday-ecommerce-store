@@ -8,6 +8,13 @@
       "when": 1790071281913,
       "tag": "0000_legal_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793155949268,
+      "tag": "0001_resilient_commerce",
+      "breakpoints": true
     }
   ]
 }

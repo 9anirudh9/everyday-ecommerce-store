@@ -1,9 +1,57 @@
 import type { Product } from './products';
+import {commerceFrench} from './commerce-copy';
 
 export type Language = 'en' | 'fr';
 export const languageCookie = 'everyday-language';
 
 const french: Record<string, string> = {
+  ...commerceFrench,
+  'Choose a valid category.': 'Choisissez une catégorie valide.',
+  'Choose a valid sort order.': 'Choisissez un ordre de tri valide.',
+  'Enter valid non-negative price limits.': 'Saisissez des prix limites valides et positifs ou nuls.',
+  'Minimum price must not exceed maximum price.': 'Le prix minimum ne doit pas dépasser le prix maximum.',
+  'Choose a rating between 0 and 5.': 'Choisissez une note comprise entre 0 et 5.',
+  'Choose a valid page number.': 'Choisissez un numéro de page valide.',
+  'Sage': 'Sauge', 'Sand': 'Sable', 'Natural': 'Naturel', 'Black': 'Noir',
+  'Forest': 'Forêt', 'Natural · 40 cm': 'Naturel · 40 cm', 'Natural · 50 cm': 'Naturel · 50 cm',
+  'Olive · 40 cm': 'Olive · 40 cm', 'Sand · 40 cm': 'Sable · 40 cm', 'Olive · 50 cm': 'Olive · 50 cm',
+  'Product suggestions': 'Suggestions de produits',
+  'Find your next everyday favourite with filters that fit.': 'Trouvez votre prochain coup de cœur grâce aux filtres.',
+  'Catalog filters': 'Filtres du catalogue', 'Search catalog': 'Rechercher dans le catalogue',
+  'Category': 'Catégorie', 'All categories': 'Toutes les catégories', 'Home collection': 'Maison',
+  'Minimum price': 'Prix minimum', 'Maximum price': 'Prix maximum', 'No maximum': 'Sans maximum',
+  'Minimum rating': 'Note minimum', 'Any rating': 'Toutes les notes', 'Sort by': 'Trier par',
+  'Featured': 'Sélection', 'Price: low to high': 'Prix croissant', 'Price: high to low': 'Prix décroissant', 'Name': 'Nom',
+  'In stock only': 'En stock uniquement', 'Apply filters': 'Appliquer les filtres', 'Reset filters': 'Réinitialiser les filtres',
+  'Ratings and stock are demo catalog data.': 'Les notes et les stocks sont des données de démonstration.',
+  'We could not load this collection.': 'Impossible de charger cette collection.',
+  'Could not load products. Please try again.': 'Impossible de charger les produits. Réessayez.',
+  'The request timed out. Please try again.': 'Le délai est dépassé. Réessayez.',
+  'Loading products…': 'Chargement des produits…',
+  'Showing {start}–{end} of {total}': 'Affichage de {start} à {end} sur {total}',
+  'That page is unavailable. Showing the closest available page.': 'Cette page est indisponible. La page disponible la plus proche est affichée.',
+  'Catalog pages': 'Pages du catalogue', 'Previous page': 'Page précédente', 'Next page': 'Page suivante',
+  'Previous': 'Précédent', 'Next': 'Suivant', 'Page {number}': 'Page {number}',
+  'Try a shorter search or remove a filter.': 'Essayez une recherche plus courte ou retirez un filtre.',
+  'Out of stock': 'Rupture de stock', 'Only {count} left': 'Plus que {count} disponibles', 'In stock': 'En stock',
+  'Demo rating {rating} out of 5': 'Note de démonstration : {rating} sur 5', 'Demo rating': 'Note de démonstration',
+  'Zoom image': 'Agrandir l’image', 'Product images': 'Images du produit', 'View image {number}': 'Voir l’image {number}',
+  'Additional views are product illustrations.': 'Les vues supplémentaires sont des illustrations du produit.',
+  'Zoomed product image': 'Image agrandie du produit', 'Close': 'Fermer',
+  'Loading product…': 'Chargement du produit…', 'We could not load this product.': 'Impossible de charger ce produit.',
+  'Could not load this product. Please try again.': 'Impossible de charger ce produit. Réessayez.',
+  'This product is no longer available. Explore the collection instead.': 'Ce produit est indisponible. Découvrez la collection.',
+  'Breadcrumb': 'Fil d’Ariane', '{count} available · demo stock': '{count} disponibles · stock de démonstration',
+  'Choose an option': 'Choisissez une option', 'Quantity': 'Quantité', 'Decrease quantity': 'Diminuer la quantité',
+  'Increase quantity': 'Augmenter la quantité', 'Maximum {count} per cart': 'Maximum {count} par panier',
+  'Already in your cart: {count}': 'Déjà dans votre panier : {count}', 'Cart limit reached': 'Limite du panier atteinte',
+  'Adding…': 'Ajout…', 'You may also like': 'Vous aimerez aussi',
+  'Stock is demonstration data, not an inventory reservation.': 'Le stock est une donnée de démonstration, sans réservation de marchandise.',
+  'Wait for your cart to finish loading.': 'Attendez le chargement de votre panier.',
+  'Choose a quantity within the available stock.': 'Choisissez une quantité dans la limite du stock disponible.',
+  'The price changed. Review the current price before adding again.': 'Le prix a changé. Vérifiez le prix actuel avant de réessayer.',
+  'Availability changed. Review the stock before adding again.': 'La disponibilité a changé. Vérifiez le stock avant de réessayer.',
+  'Could not update the cart. Please try again.': 'Impossible de modifier le panier. Réessayez.',
   'A little something for your everyday.': 'Une petite touche pour chaque jour.',
   'Everyday — Little things. Lovely spaces.': 'Everyday — Petites choses. Beaux espaces.',
   'Search plants & home accessories | Everyday': 'Rechercher des plantes et accessoires | Everyday',
@@ -142,7 +190,8 @@ const frenchProducts: Record<number, { name: string; description: string }> = {
 };
 
 export function localizeProduct(product: Product, language: Language): Product {
-  return language === 'fr' && frenchProducts[product.id] ? { ...product, ...frenchProducts[product.id] } : product;
+  if(language!=='fr')return product;
+  return frenchProducts[product.id]?{...product,...frenchProducts[product.id]}:{...product,name:product.nameFr??product.name,description:product.descriptionFr??product.description};
 }
 
 export function localizeCategory(category: Product['category'], language: Language) {
