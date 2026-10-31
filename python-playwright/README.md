@@ -27,9 +27,13 @@ JSON summary, per-run JUnit and HTML reports:
 .sites-runtime/qa-venv/Scripts/python.exe scripts/run_qa_matrix.py --base-url http://127.0.0.1:8790 --manifest .sites-runtime/test-data/demo-001/main/manifest.json --report-dir outputs/qa/demo-001
 ```
 
-For read-only deployment checks, use `--smoke` and omit `--manifest`. Bind that
-report to the exact deployment identity in the release ledger; a bare URL does
-not identify a release. Matrix results distinguish individual test executions
+For read-only deployment checks, use `--smoke`, omit `--manifest`, and supply
+`--deployment-record <sanitized-provider-record.json>`. The record must contain
+the exact `url`, full `sites_sha`, `version_id` and `deployment_id` independently
+verified through the hosting provider. It is evidence metadata, not an access
+token. The runner verifies URL equality and retains the record hash; it cannot
+authenticate provider metadata itself. A bare URL does not identify a release.
+Matrix results distinguish individual test executions
 from the 51 unique test functions. No automatic retries are enabled.
 
 Run read-only smoke against an authorized URL:
@@ -59,10 +63,31 @@ Every API call checks `X-Request-ID` and `Cache-Control`; write tests require
 an exact `127.0.0.1` or `localhost` origin, matching owned manifest, and a
 database inside that namespace. Browser writes are blocked outside that
 origin. The client blocks redirects and never prints request bodies or guest
-cookies. Traces are retained only on failure and sanitized with the existing
+cookies. Traces are retained on call, guard or page-error failure and sanitized with the existing
 `redact_trace.py`; screenshots may show dummy test data. Keep `.pytest-artifacts`
 and report files local, and delete them after 7 days. Do not publish guest
-capabilities, traces, screenshots, or the manifest.
+capabilities, traces, screenshots, or the manifest. Every browser case also writes
+sanitized `evidence.json` with browser version, locale, viewport and request
+classifications, so teardown failures have diagnostics.
+
+The production guard aborts recognized exact-origin HTTPS Cloudflare challenge
+POSTs under `/cdn-cgi/challenge-platform/h/{b,g}/jsd/oneshot/` and records them as
+blocked infrastructure. It does not forward them, and every other production
+write still fails the test. Unexpected challenge paths fail closed. Health probes
+send an explicit `Mozilla/5.0`-compatible `EverydayShopQA/1.0` user agent because
+the deployed Cloudflare edge rejects Python's default user agent. Probe failures
+are retained as FAIL, with unexecuted matrix cells marked NOT RUN.
+
+Run the safety and failure-artifact regressions without a database or running server:
+
+```powershell
+.sites-runtime/qa-venv/Scripts/python.exe scripts/test_smoke_contracts.py
+```
+
+This deliberately induces two teardown errors on intercepted local pages and
+asserts that blocked writes, redacted traces, screenshots and failure evidence
+are retained. Those nested failures are expected guard diagnostics; they are
+not application PASS results.
 
 ## Earlier standalone runner notes
 

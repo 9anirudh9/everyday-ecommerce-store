@@ -4,10 +4,12 @@ import json
 from pathlib import Path
 from urllib.parse import urlsplit
 import importlib.util
+from functools import cache
 
 import pytest
 
 from framework.api import ShopApi
+from framework.safety import diagnostic_path, request_policy
 
 
 def pytest_addoption(parser):
@@ -93,13 +95,18 @@ def browser_type_launch_args(browser_type_launch_args, browser_name):
     return options
 
 
-def _redact_trace(path):
+@cache
+def _redactor():
     source = Path(__file__).parent / 'tests' / 'regression' / 'redact_trace.py'
     spec = importlib.util.spec_from_file_location('everyday_trace_redactor', source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def _redact_trace(path):
     try:
-        module.redact_trace(path)
+        _redactor().redact_trace(path)
     except Exception:
         path.unlink(missing_ok=True)
         raise
@@ -113,38 +120,50 @@ def guest(browser, base_url, pytestconfig, request):
     context = browser.new_context(base_url=base_url, viewport=viewport, is_mobile=device == 'mobile' and browser.browser_type.name == 'chromium', locale='fr-FR' if locale == 'fr' else 'en-US', service_workers='block')
     context.add_cookies([{'name': 'everyday-language', 'value': locale, 'url': base_url}])
     violations = []
+    requests = []
+    browser_errors = []
+    local_writes = bool(request.node.get_closest_marker('destructive') or request.node.get_closest_marker('e2e'))
     def guard_route(route):
-        target = urlsplit(route.request.url)
-        if route.request.method not in ('GET', 'HEAD'):
-            if not request.node.get_closest_marker('destructive') and not request.node.get_closest_marker('e2e'):
-                violations.append('Read-only browser test attempted a write')
-                route.abort()
-                return
-            if target.scheme != 'http' or target.hostname not in ('127.0.0.1', 'localhost') or target.netloc != urlsplit(base_url).netloc:
-                violations.append('Browser write escaped local test origin')
-                route.abort()
-                return
-        route.continue_()
+        method, url = route.request.method, route.request.url
+        decision = request_policy(method, url, base_url, local_writes)
+        requests.append({'method': method, 'path': diagnostic_path(url), 'decision': decision})
+        if decision == 'blocked-write':
+            violations.append('Browser write blocked: ' + method + ' ' + diagnostic_path(url))
+        if decision.startswith('blocked-'):
+            route.abort()
+        else:
+            route.continue_()
     context.route('**/*', guard_route)
     context.tracing.start(screenshots=True, snapshots=True, sources=False)
     page = context.new_page()
+    page.on('pageerror', lambda error: browser_errors.append(_redactor().redact_text(str(error))))
     page.set_default_timeout(10000)
     yield context, page
     failed = getattr(request.node, 'rep_call', None)
-    failed = failed and failed.failed
+    failed = bool(failed and failed.failed) or bool(violations) or bool(browser_errors)
     folder = Path(pytestconfig.getoption('--artifacts-dir')) / hashlib.sha256(request.node.nodeid.encode()).hexdigest()[:16]
+    folder.mkdir(parents=True, exist_ok=True)
+    evidence = {'test': request.node.nodeid, 'browser': browser.version,
+                'locale': locale, 'viewport': viewport, 'requests': requests,
+                'blocked_infrastructure': sum(r['decision'] == 'blocked-infrastructure' for r in requests),
+                'violations': violations, 'page_errors': browser_errors, 'failed': failed}
     try:
         if failed:
-            folder.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=str(folder / 'failure.png'), full_page=True, animations='disabled')
-            trace = folder / 'trace.zip'
-            context.tracing.stop(path=str(trace))
-            _redact_trace(trace)
+            try:
+                page.screenshot(path=str(folder / 'failure.png'), full_page=True, animations='disabled')
+            finally:
+                trace = folder / 'trace.zip'
+                context.tracing.stop(path=str(trace))
+                _redact_trace(trace)
         else:
             context.tracing.stop()
     finally:
-        context.close()
+        try:
+            (folder / 'evidence.json').write_text(json.dumps(_redactor().redact(evidence), indent=2), encoding='utf-8')
+        finally:
+            context.close()
     assert not violations, '; '.join(violations)
+    assert not browser_errors, '; '.join(browser_errors)
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)

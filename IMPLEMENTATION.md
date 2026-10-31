@@ -394,6 +394,8 @@ These are target commands, not claims they pass in the existing project.
 
 ### P0-07 — REST APIs and contracts, preserving existing clients
 
+**Execution update (2026-10-31):** The P0-07–09 local API/data/test foundations are implemented. `docs/implementation/P0-07-09-ACCEPTANCE.md` maps each acceptance ID to checks; `outputs/p0-07-09-completion/EXECUTION_REPORT.md` records the current local and read-only production results. The unchecked increments remain the original plan, not proof of missing or completed execution. Protected hosted staging/recovery and P0-10 automation remain separate open gates.
+
 **Business Architect (`@ATLAS`)**
 - Objective: enable API-only setup and validation for UI tests while retaining all legacy behaviors.
 - Rules: stable JSON response model, meaningful 2xx/4xx/5xx, explicit error `code` and `message`, no client-controlled monetary fields, products/stock authoritative, guest isolation, same-origin authenticated requests.
