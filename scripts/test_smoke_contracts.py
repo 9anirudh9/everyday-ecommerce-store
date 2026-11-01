@@ -1,5 +1,6 @@
 """Deterministic request-guard and readiness-failure regressions; no network writes."""
 import json
+import io
 import os
 from pathlib import Path
 import subprocess
@@ -9,6 +10,7 @@ import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 import zipfile
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'python-playwright'))
@@ -72,6 +74,45 @@ class SmokeContracts(unittest.TestCase):
             self.assertEqual(matrix.deployment_identity(path, self.origin)['sites_sha'], 'a' * 40)
             with self.assertRaises(ValueError):
                 matrix.deployment_identity(path, 'https://other.example')
+
+    def test_public_matrix_needs_no_unrelated_local_build(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.sites-runtime') as directory:
+            path = Path(directory) / 'deployment.json'
+            path.write_text(json.dumps({'url': self.origin, 'sites_sha': 'a' * 40,
+                                        'version_id': 'version-test', 'deployment_id': 'deployment-test'}))
+            def probe(*args, **kwargs):
+                response = io.BytesIO(b'{"status":"ok"}'); response.status = 200; return response
+            def execute(command, **kwargs):
+                junit = Path(command[command.index('--junitxml') + 1])
+                junit.write_text('<testsuite tests="5" failures="0" errors="0" skipped="0"/>')
+                return SimpleNamespace(returncode=0)
+            argv = ['matrix', '--base-url', self.origin, '--smoke', '--deployment-record', str(path),
+                    '--report-dir', str(Path(directory) / 'report')]
+            with patch.object(sys, 'argv', argv), patch.object(matrix, 'fingerprint', return_value={'test': True}), \
+                    patch.object(matrix, 'verified_build', side_effect=AssertionError('Public smoke cannot require a local build')), \
+                    patch.object(matrix, 'urlopen', side_effect=probe), \
+                    patch.object(matrix.subprocess, 'check_output', return_value='a' * 40), \
+                    patch.object(matrix.subprocess, 'run', side_effect=execute):
+                self.assertEqual(matrix.main(), 0)
+            result = json.loads((Path(directory) / 'report/results.json').read_text())
+            self.assertIsNone(result['build_provenance'])
+            self.assertIsNone(result['build_unchanged_during_run'])
+
+    def test_zero_exit_without_junit_never_becomes_smoke_pass(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.sites-runtime') as directory:
+            identity = {'sha256': 'test', 'files': {}}
+            def probe(*args, **kwargs):
+                response = io.BytesIO(b'{"status":"ok"}'); response.status = 200; return response
+            with patch.object(sys, 'argv', ['matrix', '--base-url', 'http://127.0.0.1:8790', '--smoke', '--report-dir', directory]), \
+                    patch.object(matrix, 'fingerprint', return_value=identity), \
+                    patch.object(matrix, 'verified_build', return_value={'build': identity}), \
+                    patch.object(matrix, 'build_identity', return_value=identity), \
+                    patch.object(matrix, 'urlopen', side_effect=probe), \
+                    patch.object(matrix.subprocess, 'check_output', return_value='a' * 40), \
+                    patch.object(matrix.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
+                self.assertEqual(matrix.main(), 1)
+            result = json.loads((Path(directory) / 'results.json').read_text())
+            self.assertTrue(all(r['status'] == 'FAIL' for r in result['runs']))
 
     def test_teardown_errors_retain_redacted_browser_artifacts(self):
         parent = ROOT / 'outputs' / 'p0-07-09-completion' / 'guard-probes'

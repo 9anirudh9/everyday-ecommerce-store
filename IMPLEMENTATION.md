@@ -445,6 +445,8 @@ These are target commands, not claims they pass in the existing project.
 
 ### P0-10 — CI/CD, baseline reporting, gated releases and rollback
 
+**Local implementation ledger:** `docs/release/README.md` describes the checks, evidence monitor, approval/provenance validators, isolated staging renderer and rollback runbook. `outputs/p0-10/EXECUTION_REPORT.md` records actual local runs and remaining blockers. Hosted CI, staging, provider integration and rollback require separate verified configuration/approvals; authored workflows alone do not complete REL-01–REL-10.
+
 **Business Architect (`@ATLAS`)**
 - Objective: each code or deployment change is attributable and validated; approval gates prevent unreviewed release; every deployment has an automatic smoke verdict.
 - Rules: tests must pass before push approval (when environment permits), before merge, after staging deploy, after production deploy; failed smoke stops advancement; owner approval cannot be inferred from chat silence or workflow activity.

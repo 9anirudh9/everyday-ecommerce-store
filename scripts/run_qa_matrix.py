@@ -60,7 +60,8 @@ def main():
     report = args.report_dir.resolve()
     report.mkdir(parents=True, exist_ok=True)
     before = fingerprint()
-    build = verified_build()
+    # A public target is identified by provider provenance, not an unrelated local build.
+    build = None if public else verified_build()
     server = None
     if args.manifest:
         server = json.loads((args.manifest.resolve().parent / 'server.json').read_text(encoding='utf-8'))
@@ -110,14 +111,19 @@ def main():
                 suites = ET.parse(folder / 'junit.xml').getroot()
                 record.update({key: sum(int(s.attrib.get(key, 0)) for s in suites.iter('testsuite'))
                                for key in ('tests', 'failures', 'errors', 'skipped')})
+                if not record['tests'] or any(record[key] for key in ('failures', 'errors', 'skipped')):
+                    record.update(status='FAIL', exit_code=1)
+            else:
+                record.update(status='FAIL', exit_code=1, message='Missing JUnit execution evidence')
             summary['runs'].append(record)
             print(locale, viewport, record, flush=True)
     finally:
         summary['source_unchanged_during_run'] = before == fingerprint()
-        summary['build_unchanged_during_run'] = build['build'] == build_identity()
+        summary['build_unchanged_during_run'] = build['build'] == build_identity() if build is not None else None
         summary['finished_utc'] = datetime.now(timezone.utc).isoformat()
         (report / 'results.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
-    return int(any(r['exit_code'] for r in summary['runs']) or not summary['source_unchanged_during_run'] or not summary['build_unchanged_during_run'])
+    return int(any(r['exit_code'] for r in summary['runs']) or not summary['source_unchanged_during_run']
+               or (build is not None and not summary['build_unchanged_during_run']))
 
 
 if __name__ == '__main__':

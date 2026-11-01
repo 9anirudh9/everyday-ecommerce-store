@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "repository": "9anirudh9/everyday-ecommerce-store",
+  "owner_login": "9anirudh9",
+  "release_branch": "main",
+  "approval_ttl_seconds": 3600,
+  "staging_evidence_ttl_seconds": 86400,
+  "trusted_bridge_logins": [],
+  "environments": {
+    "staging": {
+      "enabled": false,
+      "provider": "cloudflare-workers",
+      "url": null,
+      "project_id": null,
+      "database_id": null
+    },
+    "production": {
+      "enabled": false,
+      "provider": "sites",
+      "url": "https://everyday-shop-anirudh.cidirianirudh.chatgpt.site",
+      "project_id": "appgprj_6ab250c88c3c8191a559c58a32627f9d",
+      "database_id": null
+    }
+  }
+}

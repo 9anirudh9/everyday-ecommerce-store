@@ -27,5 +27,6 @@ Cloud agents only see files inside the checked-out repository/environment (plus 
 - `agents/manifest.json`: role inventory.
 - `scripts/validate_agents.py`: static validation only.
 - `python-playwright/`: reusable API, isolated local E2E, and read-only deployment smoke tests. See its README for pinned dependencies, fixtures, safe commands, and deployment identity requirements. Runtime results belong to the exact execution report, not this setup guide.
+- `.github/workflows/` and `docs/release/`: P0 checks, disabled-by-default hosted release integration, activation requirements and rollback runbook. YAML does not establish active GitHub protections or a deployed staging environment.
 
 **Approval:** no push, merge, deployment, or third-party authorization occurred when this ZIP was produced.

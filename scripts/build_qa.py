@@ -9,6 +9,7 @@ from qa_provenance import ROOT, runtime_inputs, build_identity
 
 
 def main():
+    (ROOT / '.sites-runtime').mkdir(parents=True, exist_ok=True)
     output = ROOT / 'outputs/qa-build'
     output.mkdir(parents=True, exist_ok=True)
     before = runtime_inputs()

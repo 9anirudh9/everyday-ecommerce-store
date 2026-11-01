@@ -1,0 +1,97 @@
+name: P0 release authorization
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Separately protected target environment
+        type: choice
+        options: [staging, production]
+        required: true
+      application_sha:
+        description: Exact tested GitHub commit (40 lowercase hex characters)
+        type: string
+        required: true
+      artifact_sha256:
+        description: Exact CI source archive SHA-256
+        type: string
+        required: true
+      ci_run_id:
+        description: Successful P0 checks run for this exact candidate
+        type: string
+        required: true
+      staging_smoke_run_id:
+        description: Required for production; successful post-deploy staging smoke run
+        type: string
+      operation:
+        description: Publish or separately approved rollback
+        type: choice
+        options: [publish, rollback]
+        default: publish
+        required: true
+      rollback_version_id:
+        description: Exact known-good saved provider version for rollback
+        type: string
+      migration_review_sha256:
+        description: Rollback compatibility/backup review artifact digest (rollback only)
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  deployments: read
+
+concurrency:
+  group: p0-authorize-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    name: P0 owner release approval
+    if: github.ref == 'refs/heads/main'
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Bind the request to immutable input values
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          APPLICATION_SHA: ${{ inputs.application_sha }}
+          ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          STAGING_SMOKE_RUN_ID: ${{ inputs.staging_smoke_run_id }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          ROLLBACK_VERSION_ID: ${{ inputs.rollback_version_id }}
+          MIGRATION_REVIEW_SHA256: ${{ inputs.migration_review_sha256 }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          fields = {'environment':'TARGET_ENVIRONMENT','application_sha':'APPLICATION_SHA','artifact_sha256':'ARTIFACT_SHA256','ci_run_id':'CI_RUN_ID','staging_smoke_run_id':'STAGING_SMOKE_RUN_ID','operation':'RELEASE_OPERATION','rollback_version_id':'ROLLBACK_VERSION_ID','migration_review_sha256':'MIGRATION_REVIEW_SHA256','authorization_run_id':'GITHUB_RUN_ID'}
+          folder = pathlib.Path('outputs/p0-10/authorization'); folder.mkdir(parents=True, exist_ok=True)
+          (folder/'request.json').write_text(json.dumps({key:os.environ.get(value,'') for key,value in fields.items()}))
+          PY
+      - name: Verify real protections, exact CI artifact, expiry and staging smoke
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_PROTECTION_READ_TOKEN: ${{ secrets.RELEASE_PROTECTION_READ_TOKEN }}
+        run: python scripts/release_gate.py authorize --input outputs/p0-10/authorization/request.json --output outputs/p0-10/authorization/approval.json
+      - name: Retain short-lived authorization evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: p0-approval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: outputs/p0-10/authorization/approval.json
+          retention-days: 1
+          if-no-files-found: error
+
+# This job authorizes an artifact; it does not publish it. A separately approved
+# provider bridge must publish the exact tree, verify native provider metadata,
+# then call post-deploy-smoke directly or emit an authenticated deployment event.
+# Both environments remain disabled in release-policy.json until provisioned.

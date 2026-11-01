@@ -1,0 +1,63 @@
+name: P0 checks
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'feature/p0-*']
+  workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: Immutable baseline commit for the paired local comparison
+        required: true
+        default: cfc24790c2180607971ed1b14df4696136eda7d6
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-checks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: P0 checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out candidate without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Install locked dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.25.0 --activate
+          pnpm install --frozen-lockfile
+          python -m pip install -r python-playwright/requirements.lock
+          python -m playwright install --with-deps chrome
+      - name: Run isolated local checks
+        env:
+          BASELINE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || inputs.baseline_sha || 'cfc24790c2180607971ed1b14df4696136eda7d6' }}
+        run: python scripts/ci_checks.py --baseline-sha "$BASELINE_SHA" --report-dir outputs/p0-10/ci
+      - name: Independently verify execution evidence
+        if: always()
+        run: python scripts/release_monitor.py ci --bundle outputs/p0-10/ci/publish --output outputs/p0-10/ci/publish/monitor.json --promotion
+      - name: Upload sanitized evidence only
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: p0-checks-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          path: outputs/p0-10/ci/publish/
+          if-no-files-found: error
+          retention-days: 7
