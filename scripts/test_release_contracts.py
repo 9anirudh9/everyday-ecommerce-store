@@ -240,6 +240,17 @@ class ReleaseContracts(unittest.TestCase):
             (folder / 'artifact-index.json').write_text(json.dumps({'files': [{'path': 'ci-summary.json', 'sha256': 'f' * 64}]}))
             with self.assertRaises(ValueError): monitor.verify_ci(folder)
 
+    def test_failed_ci_reports_first_failed_step_before_unexecuted_artifacts(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.sites-runtime') as raw:
+            folder = Path(raw)
+            summary = folder / 'ci-summary.json'
+            summary.write_text(json.dumps({'schema': 1, 'status': 'FAIL',
+                                           'steps': [{'name': 'smoke-contracts', 'status': 'FAIL'}]}))
+            (folder / 'artifact-index.json').write_text(json.dumps({'files': [
+                {'path': 'ci-summary.json', 'sha256': hashlib.sha256(summary.read_bytes()).hexdigest()}]}))
+            with self.assertRaisesRegex(ValueError, 'CI did not pass: smoke-contracts'):
+                monitor.verify_ci(folder, promotion=True)
+
     def test_ci_index_cannot_escape_or_duplicate_an_entry(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.sites-runtime') as raw:
             folder = Path(raw)

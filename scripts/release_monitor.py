@@ -55,11 +55,15 @@ def junit_counts(path):
 
 def verify_ci(directory, promotion=False):
     paths = indexed_files(directory)
+    require('ci-summary.json' in paths, 'Missing indexed evidence: ci-summary.json')
+    summary = read_json(paths['ci-summary.json'])
+    require(summary.get('schema') == 1, 'Invalid CI summary schema')
+    failed_steps = [row.get('name', '?') for row in summary.get('steps', []) if row.get('status') == 'FAIL']
+    require(summary.get('status') == 'PASS',
+            'CI did not pass' + (': ' + ', '.join(failed_steps) if failed_steps else ''))
     for name in ('ci-summary.json', 'source/candidate-manifest.json', 'matrix/results.json',
                  'comparison/comparison.json', 'comparison/comparison-summary.json', 'comparison/junit.xml'):
         require(name in paths, 'Missing indexed evidence: ' + name)
-    summary = read_json(paths['ci-summary.json'])
-    require(summary['schema'] == 1 and summary['status'] == 'PASS', 'CI did not pass')
     require(sha(summary['application_sha'], 40) and sha(summary['artifact_sha256']), 'Missing immutable candidate identity')
     for key in ('source', 'runtime', 'build'):
         identity = summary[key]

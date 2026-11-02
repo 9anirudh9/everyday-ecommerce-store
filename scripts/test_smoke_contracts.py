@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / 'python-playwright'))
 sys.path.insert(0, str(ROOT / 'scripts'))
 from framework.safety import diagnostic_path, request_policy
 import run_qa_matrix as matrix
+from ci_checks import redact_log
 
 
 class SmokeContracts(unittest.TestCase):
@@ -151,9 +152,22 @@ def test_known_challenge_is_blocked_without_failure(page, base_url):
         result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True)
         # These two synthetic tests must fail teardown. No endpoint is allowed to receive a write.
         (directory / 'runner.log').write_text(result.stdout + result.stderr, encoding='utf-8')
-        self.assertEqual(result.returncode, 1, result.stdout[-4000:])
+        diagnostic = redact_log((result.stdout + result.stderr)[-8000:])
+        self.assertEqual(result.returncode, 1, diagnostic)
+        if not (directory / 'junit.xml').is_file():
+            self.fail('Nested pytest produced no JUnit record:\n' + diagnostic)
         junit = ET.parse(directory / 'junit.xml')
-        self.assertEqual(len(junit.findall('.//error')), 2)
+        errors = [(case.get('name'), error.get('message', ''))
+                  for case in junit.iter('testcase') for error in case.findall('error')]
+        if len(errors) != 2:
+            # The nested runner is not uploaded. Surface its redacted failure
+            # details in the parent CI log so hosted-only faults are diagnosable.
+            detail = redact_log(json.dumps(errors) + '\n' + diagnostic)
+            self.fail(f'Expected two deliberate teardown errors, found {len(errors)}:\n{detail}')
+        expected = {'test_deliberate_write_violation', 'test_deliberate_page_error'}
+        actual = {name.split('[', 1)[0] for name, _ in errors}
+        self.assertEqual(actual, expected, diagnostic)
+        self.assertTrue(all(message.startswith('failed on teardown') for _, message in errors), diagnostic)
         evidence = list((directory / 'artifacts').glob('*/evidence.json'))
         self.assertEqual(len(evidence), 3)
         failed_records = 0
