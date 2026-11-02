@@ -144,10 +144,14 @@ def test_known_challenge_is_blocked_without_failure(page, base_url):
     prepare(page, base_url)
     page.evaluate("fetch('/cdn-cgi/challenge-platform/h/g/jsd/oneshot/abc', {method:'POST'}).catch(() => null)")
 ''', encoding='utf-8')
-        env = dict(os.environ, PYTHONPATH=str(ROOT / 'python-playwright'))
+        # Match hosted CI: only the system Chrome channel is provisioned.
+        # An empty bundled-browser cache prevents local installs masking drift.
+        env = dict(os.environ, PYTHONPATH=str(ROOT / 'python-playwright'),
+                   PLAYWRIGHT_BROWSERS_PATH=str(directory / 'uninstalled-browsers'))
         command = [sys.executable, '-m', 'pytest', '-p', 'conftest', '-c', str(ROOT / 'python-playwright/pytest.ini'),
                    '--confcutdir', str(directory), '--rootdir', str(directory), str(probe), '-q',
                    '--base-url', 'https://127.0.0.1:19876', '--browser', 'chromium',
+                   '--browser-channel', 'chrome',
                    '--artifacts-dir', str(directory / 'artifacts'), '--junitxml', str(directory / 'junit.xml')]
         result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True)
         # These two synthetic tests must fail teardown. No endpoint is allowed to receive a write.
