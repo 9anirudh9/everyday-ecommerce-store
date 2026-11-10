@@ -3,6 +3,11 @@
 All steps below are PLANNED, not executed by the local implementation task.
 No approval is inferred from this document or from a configuration boolean.
 
+The steps below describe the unchanged **strict default**. The owner selected
+local preparation of a solo alternative: [SOLO-POLICY.md](SOLO-POLICY.md) provides
+the exact changes, lost protections and separate activation roadmap. Its proposal
+config does not activate either environment or authorize remote settings.
+
 1. Review the final source archive and exact task branch. Separately approve
    commit/push, any PR/main merge, and any hosted run that consumes plan minutes.
    Check the repository's plan, visibility, Actions entitlement and storage cost;

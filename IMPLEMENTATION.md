@@ -445,6 +445,13 @@ These are target commands, not claims they pass in the existing project.
 
 ### P0-10 — CI/CD, baseline reporting, gated releases and rollback
 
+> **Solo proposal (2026-11-09):** `docs/release/SOLO-POLICY.md` defines a locally
+> prepared, explicitly selected alternative to the unchanged strict default.
+> It removes required human PR approvals and deployment self-review prevention,
+> retaining CI/history controls, independent Watchtower coding review and an
+> exact-artifact owner production decision. It is not active; environment bypass
+> proof and all remote approvals remain blocking prerequisites.
+
 **Local implementation ledger:** `docs/release/README.md` describes the checks, evidence monitor, approval/provenance validators, isolated staging renderer and rollback runbook. `outputs/p0-10/EXECUTION_REPORT.md` records actual local runs and remaining blockers. Hosted CI, staging, provider integration and rollback require separate verified configuration/approvals; authored workflows alone do not complete REL-01–REL-10.
 
 **Business Architect (`@ATLAS`)**

@@ -11,7 +11,7 @@ import zipfile
 
 
 REQUIRED_STEPS = {'agents', 'lint', 'typecheck', 'build', 'commerce-domain', 'catalog-domain',
-                  'data-contracts', 'smoke-contracts', 'ci-contracts', 'release-contracts',
+                  'data-contracts', 'smoke-contracts', 'ci-contracts', 'release-contracts', 'solo-policy-contracts',
                   'fixture-prepare', 'local-matrix', 'baseline-compare', 'baseline-summary', 'source-archive'}
 
 

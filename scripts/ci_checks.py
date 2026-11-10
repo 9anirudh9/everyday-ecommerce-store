@@ -25,7 +25,7 @@ from run_qa_matrix import fingerprint
 ROOT = Path(__file__).resolve().parents[1]
 CORE_STEPS = ('agents', 'lint', 'typecheck', 'build', 'commerce-domain',
               'catalog-domain', 'data-contracts', 'smoke-contracts',
-              'ci-contracts', 'release-contracts', 'fixture-prepare', 'local-matrix', 'baseline-compare', 'baseline-summary')
+              'ci-contracts', 'release-contracts', 'solo-policy-contracts', 'fixture-prepare', 'local-matrix', 'baseline-compare', 'baseline-summary')
 
 
 def utc_now():
@@ -329,6 +329,7 @@ def main():
         step('smoke-contracts', [sys.executable, 'scripts/test_smoke_contracts.py'])
         step('ci-contracts', [sys.executable, 'scripts/test_ci_checks.py'])
         step('release-contracts', [sys.executable, 'scripts/test_release_contracts.py'])
+        step('solo-policy-contracts', [sys.executable, 'scripts/test_solo_policy.py'])
         run_id = 'ci-' + summary['application_sha'][:10] + '-' + str(os.getpid())
         namespace = ROOT / '.sites-runtime/test-data' / run_id / 'main'
         step('fixture-prepare', [sys.executable, 'scripts/test_data.py', 'prepare', '--run-id', run_id, '--worker', 'main', '--port', str(args.port)])

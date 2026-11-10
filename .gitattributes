@@ -1,0 +1,2 @@
+# Policy digest is calculated over these exact UTF-8 LF bytes on every platform.
+docs/release/SOLO-POLICY.md text eol=lf

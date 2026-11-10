@@ -111,3 +111,12 @@ configuration, access and exact-artifact owner approvals exist.
 - [Branch protection REST metadata](https://docs.github.com/en/rest/branches/branch-protection)
 - [Separate Cloudflare D1 environments](https://developers.cloudflare.com/d1/configuration/environments/)
 - [Windows job containment](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
+
+## Solo policy proposal
+
+The unchanged strict default and activation guide remain in force. The local
+[solo maintainer proposal](SOLO-POLICY.md) supplies separate payloads, a disabled
+policy config, exact-artifact manual owner decision checks and the roadmap for
+separately approved adoption. The earlier untracked GitHub protection proposal
+and audit are preserved as the strict alternative and historical evidence.
+No environment bypass read adapter has been implemented; activation is BLOCKED.

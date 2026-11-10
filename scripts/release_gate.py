@@ -58,13 +58,27 @@ def policy_environment(policy, name):
     return env
 
 
-def verify_environment_protection(data, owner):
+def protection_profile(policy=None):
+    profile = (policy or {}).get('protection_profile', 'strict')
+    require(profile in ('strict', 'solo-maintainer-v1'), 'Unknown protection profile')
+    if profile == 'solo-maintainer-v1':
+        require(policy.get('owner_id') == 75884753 and policy.get('owner_login') == '9anirudh9'
+                and policy.get('repository') == '9anirudh9/everyday-ecommerce-store', 'Solo profile identity mismatch')
+        digest = hashlib.sha256((ROOT / 'docs/release/SOLO-POLICY.md').read_bytes()).hexdigest()
+        require(policy.get('solo_policy_sha256') == digest, 'Solo policy proposal digest mismatch')
+    return profile
+
+
+def verify_environment_protection(data, owner, policy=None):
+    solo = protection_profile(policy) == 'solo-maintainer-v1'
     reviewers = [r for r in data.get('protection_rules', []) if r.get('type') == 'required_reviewers']
-    require(len(reviewers) == 1 and reviewers[0].get('prevent_self_review') is True, 'Environment needs required review and self-review prevention')
+    require(len(reviewers) == 1 and reviewers[0].get('prevent_self_review') is (not solo), 'Environment needs required review and matching self-review prevention')
     allowed = reviewers[0].get('reviewers', [])
     require(len(allowed) == 1 and allowed[0].get('type') == 'User'
             and allowed[0].get('reviewer', {}).get('login') == owner,
             'Owner must be the sole User reviewer; GitHub permits any listed reviewer to approve')
+    if solo:
+        require(allowed[0]['reviewer'].get('id') == policy['owner_id'], 'Owner reviewer ID mismatch')
     # The documented REST response may omit this control. Never invent proof or
     # treat the UI setting as established: an unsupported/missing read path blocks activation.
     require('can_admins_bypass' in data, 'Environment bypass state is not exposed by verified provider metadata; activation blocked')
@@ -84,9 +98,19 @@ def successful_run(run, policy, path, sha_value=None):
         require(run.get('head_sha') == sha_value, 'Workflow candidate SHA mismatch')
 
 
-def verify_branch_protection(data):
+def verify_branch_protection(data, policy=None):
+    solo = protection_profile(policy) == 'solo-maintainer-v1'
     reviews = data.get('required_pull_request_reviews') or {}
-    require(reviews.get('require_code_owner_reviews') is True and reviews.get('required_approving_review_count', 0) >= 1
+    if solo:
+        require(bool(data.get('required_pull_request_reviews')) and reviews.get('required_approving_review_count') == 0
+                and reviews.get('require_code_owner_reviews') is False
+                and reviews.get('require_last_push_approval') is False
+                and reviews.get('dismiss_stale_reviews') is True, 'Solo branch must require PRs with zero approvals and no self-approval requirements')
+        require(data.get('required_conversation_resolution', {}).get('enabled') is True, 'Resolved conversations required')
+        require(any(c.get('context') == 'P0 checks' and c.get('app_id') == 15368
+                    for c in (data.get('required_status_checks') or {}).get('checks', [])), 'P0 checks must be pinned to GitHub Actions App 15368')
+    else:
+        require(reviews.get('require_code_owner_reviews') is True and reviews.get('required_approving_review_count', 0) >= 1
             and reviews.get('dismiss_stale_reviews') is True and reviews.get('require_last_push_approval') is True,
             'Protected release branch needs fresh code-owner and last-push reviews')
     bypass = reviews.get('bypass_pull_request_allowances') or {}
@@ -104,7 +128,7 @@ def protected_source(reader, policy, value):
     branch_name = quote(policy['release_branch'], safe='')
     branch = reader.request('/branches/' + branch_name)
     require(branch.get('protected') is True and sha(branch.get('commit', {}).get('sha'), 40), 'Release branch is not protected')
-    verify_branch_protection(reader.protection_request('/branches/' + branch_name + '/protection'))
+    verify_branch_protection(reader.protection_request('/branches/' + branch_name + '/protection'), policy)
     comparison = reader.request('/compare/' + value + '...' + branch['commit']['sha'])
     require(comparison.get('merge_base_commit', {}).get('sha') == value, 'Evidence source is not in protected release history')
 
@@ -122,6 +146,11 @@ def trusted_run(reader, run, policy, path, sha_value=None):
 
 def validate_approval(approval, policy, name, app_sha, artifact_sha, now):
     env = policy_environment(policy, name)
+    if protection_profile(policy) == 'solo-maintainer-v1':
+        require(approval.get('protection_profile') == 'solo-maintainer-v1'
+                and approval.get('solo_policy_sha256') == policy['solo_policy_sha256']
+                and approval.get('owner_review', {}).get('user') == owner_identity(policy)
+                and approval.get('authorization_attempt') == 1, 'Solo approval policy/owner binding mismatch')
     require(approval.get('schema') == 1 and approval.get('environment') == name, 'Approval environment mismatch')
     require(approval.get('application_sha') == app_sha and approval.get('artifact_sha256') == artifact_sha,
             'Approval does not identify the exact candidate')
@@ -235,17 +264,57 @@ class GitHubReader:
             return json.loads(archive.read(filename))
 
 
+def owner_identity(policy):
+    return {'login': policy['owner_login'], 'id': policy['owner_id'], 'type': 'User'}
+
+
+def approval_statement(policy, request):
+    """Exact text the owner must personally enter in GitHub's environment review."""
+    fields = {k: str(request.get(k) or '') for k in (
+        'environment', 'application_sha', 'artifact_sha256', 'authorization_run_id',
+        'ci_run_id', 'staging_smoke_run_id', 'rollback_version_id', 'migration_review_sha256')}
+    fields.update(operation=request.get('operation') or 'publish', attempt=1,
+                  profile=protection_profile(policy), policy_sha256=policy.get('solo_policy_sha256'))
+    return 'APPROVE ' + json.dumps(fields, sort_keys=True, separators=(',', ':'))
+
+
+def verify_solo_review(reader, policy, request, current, environment):
+    identity = owner_identity(policy)
+    require(current.get('run_attempt') == 1, 'Solo approval requires a fresh dispatch, never a rerun')
+    for field in ('actor', 'triggering_actor'):
+        require(all(current.get(field, {}).get(k) == v for k, v in identity.items()), 'Solo request must be initiated by the owner')
+    require(type(environment.get('id')) is int and environment['id'] > 0, 'Missing environment identity')
+    history = reader.request('/actions/runs/' + str(current['id']) + '/approvals')
+    require(isinstance(history, list), 'Missing provider review history')
+    relevant = [r for r in history if any(e.get('id') == environment['id'] or e.get('name') == request['environment']
+                                        for e in r.get('environments', []))]
+    require(len(relevant) == 1, 'Missing or ambiguous owner environment decision')
+    review = relevant[0]
+    require(review.get('state') == 'approved' and all(review.get('user', {}).get(k) == v for k, v in identity.items()), 'Explicit owner approval required')
+    require(any(e.get('id') == environment['id'] and e.get('name') == request['environment']
+                for e in review.get('environments', [])), 'Approval environment identity mismatch')
+    statement = approval_statement(policy, request)
+    require(review.get('comment') == statement, 'Owner must explicitly approve the exact artifact and solo policy')
+    return {'user': identity, 'request_actor': identity, 'environment_id': environment['id'],
+            'comment_sha256': hashlib.sha256(statement.encode()).hexdigest()}
+
+
 def authorize(reader, policy, request, now):
     name, app_sha, digest = request['environment'], request['application_sha'], request['artifact_sha256']
     env = policy_environment(policy, name)
     require(sha(app_sha, 40) and sha(digest), 'Use full candidate SHA and SHA-256 digest')
-    verify_environment_protection(reader.request('/environments/' + quote(name, safe='')), policy['owner_login'])
+    environment = reader.request('/environments/' + quote(name, safe=''))
+    verify_environment_protection(environment, policy['owner_login'], policy)
     current = reader.run(request['authorization_run_id'])
     require(current.get('event') == 'workflow_dispatch' and current.get('head_branch') == policy['release_branch']
             and current.get('path', '').split('@')[0] == '.github/workflows/release-authorize.yml', 'Authorization must run from the protected release branch')
     require(current.get('repository', {}).get('full_name') == policy['repository'], 'Authorization repository mismatch')
     protected_source(reader, policy, current.get('head_sha'))
     require(timedelta(0) <= now - timestamp(current['created_at']) < timedelta(seconds=policy['approval_ttl_seconds']), 'Request expired while waiting for approval; request a new approval')
+    owner_review = None
+    if protection_profile(policy) == 'solo-maintainer-v1':
+        require(str(current['id']) == str(request['authorization_run_id']), 'Authorization run identity mismatch')
+        owner_review = verify_solo_review(reader, policy, request, current, environment)
     ci = reader.run(request['ci_run_id']); trusted_run(reader, ci, policy, '.github/workflows/checks.yml', app_sha)
     name_prefix = 'p0-checks-' + app_sha + '-' + str(ci['run_attempt'])
     summary = reader.artifact_json(ci, name_prefix, 'ci-summary.json')
@@ -271,6 +340,9 @@ def authorize(reader, policy, request, now):
                 'expires_utc': (timestamp(current['created_at']) + timedelta(seconds=policy['approval_ttl_seconds'])).isoformat(),
                 'rollback_version_id': request.get('rollback_version_id'),
                 'migration_review_sha256': request.get('migration_review_sha256')}
+    if owner_review:
+        approval.update(protection_profile='solo-maintainer-v1', solo_policy_sha256=policy['solo_policy_sha256'],
+                        owner_review=owner_review, staging_smoke_run_id=request.get('staging_smoke_run_id'))
     validate_approval(approval, policy, name, app_sha, digest, now)
     return approval
 
@@ -283,6 +355,13 @@ def verified_event(reader, policy, event, now):
     require(run['head_branch'] == policy['release_branch'] and run['event'] == 'workflow_dispatch', 'Authorization ran from untrusted context')
     require(int(run['run_attempt']) == payload.get('authorization_attempt'), 'Authorization attempt mismatch')
     approval = reader.artifact_json(run, 'p0-approval-' + str(run['id']) + '-' + str(run['run_attempt']), 'approval.json')
+    if protection_profile(policy) == 'solo-maintainer-v1':
+        require(str(run['id']) == str(approval.get('authorization_run_id'))
+                and timestamp(approval['expires_utc']) == timestamp(run['created_at']) + timedelta(seconds=policy['approval_ttl_seconds']),
+                'Solo receipt must retain original request identity and expiry')
+        environment = reader.request('/environments/' + quote(approval['environment'], safe=''))
+        verify_environment_protection(environment, policy['owner_login'], policy)
+        require(verify_solo_review(reader, policy, approval, run, environment) == approval.get('owner_review'), 'Owner review receipt mismatch')
     return deployment_from_event(event, policy, approval, now)
 
 

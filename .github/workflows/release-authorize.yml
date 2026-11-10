@@ -46,7 +46,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  review-request:
+    name: Display exact owner decision before approval
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Display immutable request and policy for owner review
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          APPLICATION_SHA: ${{ inputs.application_sha }}
+          ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          STAGING_SMOKE_RUN_ID: ${{ inputs.staging_smoke_run_id }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          ROLLBACK_VERSION_ID: ${{ inputs.rollback_version_id }}
+          MIGRATION_REVIEW_SHA256: ${{ inputs.migration_review_sha256 }}
+        run: python scripts/release_request.py
   authorize:
+    needs: review-request
     name: P0 owner release approval
     if: github.ref == 'refs/heads/main'
     environment: ${{ inputs.environment }}
@@ -70,13 +92,7 @@ jobs:
           RELEASE_OPERATION: ${{ inputs.operation }}
           ROLLBACK_VERSION_ID: ${{ inputs.rollback_version_id }}
           MIGRATION_REVIEW_SHA256: ${{ inputs.migration_review_sha256 }}
-        run: |
-          python - <<'PY'
-          import json, os, pathlib
-          fields = {'environment':'TARGET_ENVIRONMENT','application_sha':'APPLICATION_SHA','artifact_sha256':'ARTIFACT_SHA256','ci_run_id':'CI_RUN_ID','staging_smoke_run_id':'STAGING_SMOKE_RUN_ID','operation':'RELEASE_OPERATION','rollback_version_id':'ROLLBACK_VERSION_ID','migration_review_sha256':'MIGRATION_REVIEW_SHA256','authorization_run_id':'GITHUB_RUN_ID'}
-          folder = pathlib.Path('outputs/p0-10/authorization'); folder.mkdir(parents=True, exist_ok=True)
-          (folder/'request.json').write_text(json.dumps({key:os.environ.get(value,'') for key,value in fields.items()}))
-          PY
+        run: python scripts/release_request.py
       - name: Verify real protections, exact CI artifact, expiry and staging smoke
         env:
           GITHUB_TOKEN: ${{ github.token }}
